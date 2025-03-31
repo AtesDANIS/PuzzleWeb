@@ -74,15 +74,16 @@ class PuzzleGame {
     }
     
     createPuzzle() {
-        // Calculate piece size based on image dimensions
-        const maxSize = Math.min(400, window.innerWidth * 0.4);
-        this.pieceSize = Math.floor(maxSize / this.gridSize);
+        // Calculate piece size based on board size
+        const boardSize = Math.min(300, window.innerWidth - 40); // 40px for padding
+        this.pieceSize = boardSize / this.gridSize;
         
         // Set board size
-        this.puzzleBoard.style.width = (this.gridSize * this.pieceSize) + 'px';
-        this.puzzleBoard.style.height = (this.gridSize * this.pieceSize) + 'px';
+        this.puzzleBoard.style.width = boardSize + 'px';
+        this.puzzleBoard.style.height = boardSize + 'px';
         
         // Update pieces container grid
+        this.piecesContainer.style.width = boardSize + 'px';
         this.piecesContainer.style.gridTemplateColumns = `repeat(${this.gridSize}, 1fr)`;
         
         // Create puzzle slots
@@ -90,10 +91,10 @@ class PuzzleGame {
             for (let j = 0; j < this.gridSize; j++) {
                 const slot = document.createElement('div');
                 slot.className = 'puzzle-slot';
-                slot.style.width = this.pieceSize + 'px';
-                slot.style.height = this.pieceSize + 'px';
-                slot.style.left = (j * this.pieceSize) + 'px';
-                slot.style.top = (i * this.pieceSize) + 'px';
+                slot.style.left = (j * 100 / this.gridSize) + '%';
+                slot.style.top = (i * 100 / this.gridSize) + '%';
+                slot.style.width = (100 / this.gridSize) + '%';
+                slot.style.height = (100 / this.gridSize) + '%';
                 slot.dataset.row = i;
                 slot.dataset.col = j;
                 
@@ -107,8 +108,6 @@ class PuzzleGame {
         for (let i = 0; i < this.gridSize; i++) {
             for (let j = 0; j < this.gridSize; j++) {
                 const piece = document.createElement('div');
-                piece.style.width = this.pieceSize + 'px';
-                piece.style.height = this.pieceSize + 'px';
                 piece.className = 'puzzle-piece';
                 piece.dataset.row = i;
                 piece.dataset.col = j;
@@ -165,8 +164,12 @@ class PuzzleGame {
             // Create a clone for visual feedback
             const clone = piece.cloneNode(true);
             clone.id = 'dragging-clone';
-            clone.style.position = 'fixed';
-            clone.style.zIndex = '1000';
+            clone.style.width = this.pieceSize + 'px';
+            clone.style.height = this.pieceSize + 'px';
+            clone.style.padding = '0';
+            clone.style.backgroundImage = piece.style.backgroundImage;
+            clone.style.backgroundSize = piece.style.backgroundSize;
+            clone.style.backgroundPosition = piece.style.backgroundPosition;
             clone.style.opacity = '0.8';
             clone.style.pointerEvents = 'none';
             document.body.appendChild(clone);
@@ -247,8 +250,11 @@ class PuzzleGame {
     updateDraggingPosition(x, y) {
         const clone = document.getElementById('dragging-clone');
         if (clone) {
-            clone.style.left = (x - this.touchOffset.x) + 'px';
-            clone.style.top = (y - this.touchOffset.y) + 'px';
+            // Adjust position by the touch/mouse offset and clone size
+            const left = x - this.touchOffset.x;
+            const top = y - this.touchOffset.y;
+            clone.style.left = left + 'px';
+            clone.style.top = top + 'px';
         }
     }
 
@@ -288,8 +294,6 @@ class PuzzleGame {
                         // Correct position
                         slot.appendChild(piece);
                         piece.classList.add('placed');
-                        piece.style.left = '0';
-                        piece.style.top = '0';
                         
                         // Play correct placement sound
                         this.correctSound.currentTime = 0;
