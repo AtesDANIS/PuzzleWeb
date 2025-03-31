@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Jigsaw Puzzle Game</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <h1>Jigsaw Puzzle Game</h1>
+        <div class="game-controls">
+            <input type="file" id="imageUpload" accept="image/*" class="file-input">
+            <button id="startGame">Start New Game</button>
+            <select id="difficulty">
+                <option value="3">Easy (3x3)</option>
+                <option value="4">Medium (4x4)</option>
+                <option value="5">Hard (5x5)</option>
+            </select>
+            <span id="timer">Time: 0:00</span>
+        </div>
+        <div class="game-container">
+            <div id="puzzleBoard"></div>
+            <div id="piecesContainer"></div>
+        </div>
+    </div>
+    <audio id="newGameSound" src="sounds/newgame.mp3"></audio>
+    <audio id="correctSound" src="sounds/correct.mp3"></audio>
+    <script src="script.js"></script>
+</body>
+</html> 

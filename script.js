@@ -1,0 +1,375 @@
+class PuzzleGame {
+    constructor() {
+        this.puzzleBoard = document.getElementById('puzzleBoard');
+        this.piecesContainer = document.getElementById('piecesContainer');
+        this.startButton = document.getElementById('startGame');
+        this.difficultySelect = document.getElementById('difficulty');
+        this.timerDisplay = document.getElementById('timer');
+        this.imageUpload = document.getElementById('imageUpload');
+        this.newGameSound = document.getElementById('newGameSound');
+        this.correctSound = document.getElementById('correctSound');
+        
+        this.pieces = [];
+        this.gridSize = 3;
+        this.pieceSize = 100;
+        this.timer = 0;
+        this.timerInterval = null;
+        this.isPlaying = false;
+        this.puzzleImage = null;
+        this.slots = [];
+        this.draggedPiece = null;
+        this.touchOffset = { x: 0, y: 0 };
+        
+        this.setupEventListeners();
+    }
+    
+    setupEventListeners() {
+        this.startButton.addEventListener('click', () => this.startGame());
+        this.difficultySelect.addEventListener('change', () => {
+            this.gridSize = parseInt(this.difficultySelect.value);
+            if (this.isPlaying) {
+                this.startGame();
+            }
+        });
+        
+        this.imageUpload.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                    this.puzzleImage = new Image();
+                    this.puzzleImage.onload = () => {
+                        this.startGame();
+                    };
+                    this.puzzleImage.src = event.target.result;
+                };
+                reader.readAsDataURL(file);
+            }
+        });
+    }
+    
+    startGame() {
+        if (!this.puzzleImage) {
+            alert('Please upload an image first!');
+            return;
+        }
+        // Play new game sound
+        this.newGameSound.currentTime = 0;
+        this.newGameSound.play();
+        
+        this.resetGame();
+        this.createPuzzle();
+        this.startTimer();
+        this.isPlaying = true;
+    }
+    
+    resetGame() {
+        this.pieces = [];
+        this.slots = [];
+        this.piecesContainer.innerHTML = '';
+        this.puzzleBoard.innerHTML = '';
+        this.stopTimer();
+        this.timer = 0;
+        this.updateTimerDisplay();
+    }
+    
+    createPuzzle() {
+        // Calculate piece size based on image dimensions
+        const maxSize = Math.min(400, window.innerWidth * 0.4);
+        this.pieceSize = Math.floor(maxSize / this.gridSize);
+        
+        // Set board size
+        this.puzzleBoard.style.width = (this.gridSize * this.pieceSize) + 'px';
+        this.puzzleBoard.style.height = (this.gridSize * this.pieceSize) + 'px';
+        
+        // Update pieces container grid
+        this.piecesContainer.style.gridTemplateColumns = `repeat(${this.gridSize}, 1fr)`;
+        
+        // Create puzzle slots
+        for (let i = 0; i < this.gridSize; i++) {
+            for (let j = 0; j < this.gridSize; j++) {
+                const slot = document.createElement('div');
+                slot.className = 'puzzle-slot';
+                slot.style.width = this.pieceSize + 'px';
+                slot.style.height = this.pieceSize + 'px';
+                slot.style.left = (j * this.pieceSize) + 'px';
+                slot.style.top = (i * this.pieceSize) + 'px';
+                slot.dataset.row = i;
+                slot.dataset.col = j;
+                
+                this.setupSlotDropZone(slot);
+                this.puzzleBoard.appendChild(slot);
+                this.slots.push(slot);
+            }
+        }
+        
+        // Create puzzle pieces
+        for (let i = 0; i < this.gridSize; i++) {
+            for (let j = 0; j < this.gridSize; j++) {
+                const piece = document.createElement('div');
+                piece.style.width = this.pieceSize + 'px';
+                piece.style.height = this.pieceSize + 'px';
+                piece.className = 'puzzle-piece';
+                piece.dataset.row = i;
+                piece.dataset.col = j;
+                
+                // Set background image for the piece
+                piece.style.backgroundImage = `url(${this.puzzleImage.src})`;
+                piece.style.backgroundSize = `${this.gridSize * 100}%`;
+                piece.style.backgroundPosition = `-${j * 100}% -${i * 100}%`;
+                
+                this.setupPieceDragAndDrop(piece);
+                this.pieces.push(piece);
+            }
+        }
+        
+        // Shuffle pieces
+        this.shufflePieces();
+    }
+    
+    setupPieceDragAndDrop(piece) {
+        // Desktop drag and drop
+        piece.draggable = true;
+        
+        piece.addEventListener('dragstart', (e) => {
+            piece.classList.add('dragging');
+            e.dataTransfer.effectAllowed = 'move';
+            e.dataTransfer.setData('text/plain', JSON.stringify({
+                row: piece.dataset.row,
+                col: piece.dataset.col
+            }));
+        });
+        
+        piece.addEventListener('dragend', () => {
+            piece.classList.remove('dragging');
+            document.querySelectorAll('.puzzle-slot.hover').forEach(slot => {
+                slot.classList.remove('hover');
+            });
+        });
+
+        // Mobile touch events
+        piece.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            this.draggedPiece = piece;
+            piece.classList.add('dragging');
+            
+            const touch = e.touches[0];
+            const rect = piece.getBoundingClientRect();
+            
+            // Calculate offset between touch point and piece position
+            this.touchOffset = {
+                x: touch.clientX - rect.left,
+                y: touch.clientY - rect.top
+            };
+            
+            // Create a clone for visual feedback
+            const clone = piece.cloneNode(true);
+            clone.id = 'dragging-clone';
+            clone.style.position = 'fixed';
+            clone.style.zIndex = '1000';
+            clone.style.opacity = '0.8';
+            clone.style.pointerEvents = 'none';
+            document.body.appendChild(clone);
+            
+            this.updateDraggingPosition(touch.clientX, touch.clientY);
+        });
+
+        piece.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            if (this.draggedPiece) {
+                const touch = e.touches[0];
+                this.updateDraggingPosition(touch.clientX, touch.clientY);
+                
+                // Find slot under touch point
+                const slot = this.findSlotAtPoint(touch.clientX, touch.clientY);
+                document.querySelectorAll('.puzzle-slot.hover').forEach(s => s.classList.remove('hover'));
+                if (slot) {
+                    slot.classList.add('hover');
+                }
+            }
+        });
+
+        piece.addEventListener('touchend', (e) => {
+            e.preventDefault();
+            if (this.draggedPiece) {
+                const touch = e.changedTouches[0];
+                const slot = this.findSlotAtPoint(touch.clientX, touch.clientY);
+                
+                if (slot) {
+                    const pieceData = {
+                        row: this.draggedPiece.dataset.row,
+                        col: this.draggedPiece.dataset.col
+                    };
+                    
+                    if (pieceData.row === slot.dataset.row && pieceData.col === slot.dataset.col) {
+                        // Correct position
+                        slot.appendChild(this.draggedPiece);
+                        this.draggedPiece.classList.add('placed');
+                        this.draggedPiece.style.position = '';
+                        this.draggedPiece.style.left = '0';
+                        this.draggedPiece.style.top = '0';
+                        
+                        // Play correct placement sound
+                        this.correctSound.currentTime = 0;
+                        this.correctSound.play();
+                        
+                        // Check if puzzle is complete
+                        this.checkPuzzleComplete();
+                    } else {
+                        // Wrong position - return to pieces container
+                        this.piecesContainer.appendChild(this.draggedPiece);
+                        this.draggedPiece.classList.remove('placed');
+                        this.draggedPiece.style.position = '';
+                        this.draggedPiece.style.left = '';
+                        this.draggedPiece.style.top = '';
+                    }
+                } else {
+                    // No slot found - return to pieces container
+                    this.piecesContainer.appendChild(this.draggedPiece);
+                    this.draggedPiece.classList.remove('placed');
+                    this.draggedPiece.style.position = '';
+                    this.draggedPiece.style.left = '';
+                    this.draggedPiece.style.top = '';
+                }
+                
+                // Clean up
+                this.draggedPiece.classList.remove('dragging');
+                const clone = document.getElementById('dragging-clone');
+                if (clone) {
+                    clone.remove();
+                }
+                this.draggedPiece = null;
+                document.querySelectorAll('.puzzle-slot.hover').forEach(s => s.classList.remove('hover'));
+            }
+        });
+    }
+
+    updateDraggingPosition(x, y) {
+        const clone = document.getElementById('dragging-clone');
+        if (clone) {
+            clone.style.left = (x - this.touchOffset.x) + 'px';
+            clone.style.top = (y - this.touchOffset.y) + 'px';
+        }
+    }
+
+    findSlotAtPoint(x, y) {
+        const slots = Array.from(document.querySelectorAll('.puzzle-slot'));
+        return slots.find(slot => {
+            const rect = slot.getBoundingClientRect();
+            return x >= rect.left && x <= rect.right && 
+                   y >= rect.top && y <= rect.bottom;
+        });
+    }
+    
+    setupSlotDropZone(slot) {
+        slot.addEventListener('dragenter', (e) => {
+            e.preventDefault();
+            slot.classList.add('hover');
+        });
+
+        slot.addEventListener('dragover', (e) => {
+            e.preventDefault();
+        });
+        
+        slot.addEventListener('dragleave', () => {
+            slot.classList.remove('hover');
+        });
+        
+        slot.addEventListener('drop', (e) => {
+            e.preventDefault();
+            slot.classList.remove('hover');
+            
+            try {
+                const pieceData = JSON.parse(e.dataTransfer.getData('text/plain'));
+                const piece = document.querySelector('.puzzle-piece.dragging');
+                
+                if (piece) {
+                    if (pieceData.row === slot.dataset.row && pieceData.col === slot.dataset.col) {
+                        // Correct position
+                        slot.appendChild(piece);
+                        piece.classList.add('placed');
+                        piece.style.left = '0';
+                        piece.style.top = '0';
+                        
+                        // Play correct placement sound
+                        this.correctSound.currentTime = 0;
+                        this.correctSound.play();
+                        
+                        // Check if puzzle is complete
+                        this.checkPuzzleComplete();
+                    } else {
+                        // Wrong position - return to pieces container
+                        this.piecesContainer.appendChild(piece);
+                        piece.classList.remove('placed');
+                        piece.style.position = '';
+                        piece.style.left = '';
+                        piece.style.top = '';
+                    }
+                }
+            } catch (error) {
+                console.error('Error handling drop:', error);
+            }
+        });
+    }
+    
+    checkPuzzleComplete() {
+        const allPiecesPlaced = this.slots.every(slot => slot.children.length > 0);
+        const allPiecesCorrect = this.slots.every(slot => {
+            const piece = slot.children[0];
+            return piece && 
+                   piece.dataset.row === slot.dataset.row && 
+                   piece.dataset.col === slot.dataset.col;
+        });
+        
+        if (allPiecesPlaced && allPiecesCorrect) {
+            this.stopTimer();
+            setTimeout(() => {
+                alert('Congratulations! You completed the puzzle!');
+            }, 100);
+        }
+    }
+    
+    shufflePieces() {
+        const piecesContainer = this.piecesContainer;
+        piecesContainer.innerHTML = '';
+        
+        // Fisher-Yates shuffle
+        for (let i = this.pieces.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [this.pieces[i], this.pieces[j]] = [this.pieces[j], this.pieces[i]];
+        }
+        
+        this.pieces.forEach(piece => {
+            piece.classList.remove('placed');
+            piece.style.position = '';
+            piece.style.left = '';
+            piece.style.top = '';
+            piecesContainer.appendChild(piece);
+        });
+    }
+    
+    startTimer() {
+        this.timerInterval = setInterval(() => {
+            this.timer++;
+            this.updateTimerDisplay();
+        }, 1000);
+    }
+    
+    stopTimer() {
+        if (this.timerInterval) {
+            clearInterval(this.timerInterval);
+            this.timerInterval = null;
+        }
+    }
+    
+    updateTimerDisplay() {
+        const minutes = Math.floor(this.timer / 60);
+        const seconds = this.timer % 60;
+        this.timerDisplay.textContent = `Time: ${minutes}:${seconds.toString().padStart(2, '0')}`;
+    }
+}
+
+// Initialize the game when the page loads
+window.addEventListener('load', () => {
+    new PuzzleGame();
+}); 
